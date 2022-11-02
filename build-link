@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -eEou pipefail
+
+IMAGE_NAME=deep-quintic-link
+DIRNAME=`dirname $0`
+
+# Build the docker image
+docker build \
+  --pull \
+  --network=host \
+  --build-arg user=$USER \
+  --build-arg uid=$UID \
+  --build-arg home=$HOME \
+  --build-arg workspace=$HOME \
+  --build-arg shell=$SHELL \
+  --build-arg link=1 \
+  -t $IMAGE_NAME $DIRNAME \
+  $@

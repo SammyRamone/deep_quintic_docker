@@ -1,5 +1,3 @@
-FROM ros:rolling
-
 # Arguments
 ARG user
 ARG uid
@@ -8,12 +6,20 @@ ARG workspace
 ARG shell
 ARG link
 
+FROM ros:rolling AS base
+ARG user
+ARG uid
+ARG home
+ARG workspace
+ARG shell
+
 # Basic Utilities
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y  update \
   && apt-get install -y apt-utils \
   && apt-get install -y \
     build-essential \
+    cargo \
     gdb \
     gnupg2 \
     htop \
@@ -144,32 +150,51 @@ RUN apt-get install -y \
 
 RUN apt update && apt upgrade -y --allow-downgrades
 
+RUN cargo install --locked pueue 
+RUN mkdir /scratch
+RUN mkdir /scratch/10bestman
+RUN mkdir /scratch/10bestman/pueue
+
+FROM base AS base-1
+ARG user
+ARG uid
+ARG home
+ARG workspace
+ARG shell
+
 # Mount the user's home directory
 VOLUME "${home}"
-
-# copy necessary code and simulator
-COPY ./resources/repositories /DeepQuintic/repositories
-COPY ./resources/webots /usr/local/webots
-COPY ./resources/source_ros /DeepQuintic/
-
 # Clone user into docker image and set up X11 sharing
 RUN \
   echo "${user}:x:${uid}:${uid}:${user},,,:${home}:${shell}" >> /etc/passwd \
   && echo "${user}:*::0:99999:0:::" >> /etc/shadow \
   && echo "${user}:x:${uid}:" >> /etc/group \
   && echo "${user} ALL=(ALL) NOPASSWD: ALL" >> "/etc/sudoers"
+RUN chown ${user} /scratch/10bestman/pueue
 
+WORKDIR /srv/ssd_nvm/10bestman/repositories/DeepQuintic/rl-baselines3-zoo/
+
+FROM base AS base-2
+ARG user
+ARG uid
+ARG home
+ARG workspace
+ARG shell
+
+# Clone user into docker image and set up X11 sharing
+RUN \
+  echo "${user}:x:${uid}:${uid}:${user},,,:/homeL/bestmann:${shell}" >> /etc/passwd \
+  && echo "${user}:*::0:99999:0:::" >> /etc/shadow \
+  && echo "${user}:x:${uid}:" >> /etc/group \
+  && echo "${user} ALL=(ALL) NOPASSWD: ALL" >> "/etc/sudoers"
+RUN chown ${user} /scratch/10bestman/pueue/
+
+# copy necessary code and simulator
+COPY ./resources/repositories /DeepQuintic/repositories
+COPY ./resources/webots /usr/local/webots
+COPY ./resources/source_ros /DeepQuintic/
 # make user owner of /DeepQuintic
 RUN chown -R ${user} /DeepQuintic
-
-# Switch to user
-USER "${user}"
-# This is required for sharing Xauthority
-ENV QT_X11_NO_MITSHM=1
-# Switch to the workspace
-WORKDIR ${workspace}
-
-
 # build ros2 code
 RUN mkdir /DeepQuintic/ros2_ws 
 RUN mkdir /DeepQuintic/ros2_ws/src
@@ -178,4 +203,11 @@ RUN ln -s /DeepQuintic/repositories
 RUN chown -R ${user} /DeepQuintic/ros2_ws
 WORKDIR /DeepQuintic/ros2_ws
 RUN /bin/bash -c "source /opt/ros/rolling/setup.bash && colcon build --packages-up-to bitbots_quintic_walk"
+RUN chown -R ${user} /DeepQuintic/ros2_ws
+WORKDIR /DeepQuintic/rl-baselines3-zoo
 
+FROM base-$link AS final
+# Switch to user
+USER "${user}"
+# This is required for sharing Xauthority
+ENV QT_X11_NO_MITSHM=1
